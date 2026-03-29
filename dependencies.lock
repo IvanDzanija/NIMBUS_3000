@@ -1,0 +1,44 @@
+dependencies:
+  espressif/mqtt:
+    component_hash: ffdad5659706b4dc14bc63f8eb73ef765efa015bf7e9adf71c813d52a2dc9342
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.0
+  idf:
+    source:
+      type: idf
+    version: 5.5.3
+  lvgl/lvgl:
+    component_hash: 77ce3a05acc0f9709986d61ab2655f6e15c5803f8866aa7fe94a6cfeee6c0cd1
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 7.11.0
+  lvgl/lvgl_esp32_drivers:
+    component_hash: 8af46443f02692ce89c107eb0203a3d9e005407c478062f1ccde39ead2481282
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    - name: lvgl/lvgl
+      registry_url: https://components.espressif.com
+      require: public
+      version: ==7.11.0
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.0.3
+direct_dependencies:
+- espressif/mqtt
+- idf
+- lvgl/lvgl
+- lvgl/lvgl_esp32_drivers
+manifest_hash: 2d6f4a8b7003c3a67b9a5bc181efc1f87f2a558adc9438a74dc42686ee5fe22a
+target: esp32
+version: 2.0.0
