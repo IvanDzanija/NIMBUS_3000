@@ -12,8 +12,8 @@ class FrameReceiver {
   static constexpr const char *TAG = "FrameReceiver";
   TaskHandle_t _task_handle = nullptr;
 
-  // Keep this small enough for boards without PSRAM.
-  static constexpr size_t BUF_SIZE = 12 * 1024;
+  // Buffer to receive JPEG into — 10KB fits QQVGA quality 63
+  static constexpr size_t BUF_SIZE = 64 * 1024;
   uint8_t *_frame_buf = nullptr;
   size_t _frame_len = 0;
   portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;

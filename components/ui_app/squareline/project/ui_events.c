@@ -132,6 +132,8 @@ void dark_mode_on(lv_event_t *e)
     if (ui_KriviOdgovor) ui_KriviOdgovor_refresh();
     if (ui_Alarm_Ringing_Scr) ui_Alarm_Ringing_Scr_refresh();
     if (ui_PrimljenePoruke) ui_PrimljenePoruke_refresh();
+    if (ui_Camera_Scr) ui_Camera_Scr_refresh();
+    if (ui_Gallery_Scr) ui_Gallery_Scr_refresh();
 
     lv_obj_set_style_bg_color(ui_Settings_scroll_panel, bg_color_white, 0);
     lv_obj_set_style_border_color(ui_Settings_scroll_panel, bg_color_white, 0);
@@ -164,6 +166,8 @@ void dark_mode_off(lv_event_t *e)
     if (ui_KriviOdgovor) ui_KriviOdgovor_refresh();
     if (ui_Alarm_Ringing_Scr) ui_Alarm_Ringing_Scr_refresh();
     if (ui_PrimljenePoruke) ui_PrimljenePoruke_refresh();
+    if (ui_Camera_Scr) ui_Camera_Scr_refresh();
+    if (ui_Gallery_Scr) ui_Gallery_Scr_refresh();
 
     lv_obj_set_style_bg_color(ui_Settings_scroll_panel, bg_color_black, 0);
     lv_obj_set_style_border_color(ui_Settings_scroll_panel, bg_color_black, 0);

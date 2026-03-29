@@ -5,7 +5,9 @@ file(GLOB_RECURSE SQUARELINE_SRCS
 
 set(COMPONENT_SRCS 
     "ui_app.c"
+    "ui_camera_gallery.c"
     "ui_message_bridge.c"
+    "squareline/project/screens/ui_Gallery_Scr.c"
     ${SQUARELINE_SRCS}
 )
 
