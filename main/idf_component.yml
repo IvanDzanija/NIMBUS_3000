@@ -17,3 +17,4 @@ dependencies:
   lvgl/lvgl: '*'
   espressif/mqtt: '*'
   lvgl/lvgl_esp32_drivers: '*'
+  espressif/esp32-camera: '*'
