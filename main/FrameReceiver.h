@@ -41,7 +41,10 @@ class FrameReceiver {
   void run() {
     _frame_buf = static_cast<uint8_t *>(
         heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-
+    if (!_frame_buf) {
+      ESP_LOGW(TAG, "PSRAM unavailable, falling back to internal RAM");
+      _frame_buf = static_cast<uint8_t *>(malloc(BUF_SIZE));
+    }
     if (!_frame_buf) {
       ESP_LOGE(TAG, "Failed to alloc frame buffer");
       vTaskDelete(NULL);

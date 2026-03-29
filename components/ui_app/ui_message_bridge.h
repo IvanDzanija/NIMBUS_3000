@@ -52,6 +52,10 @@ const char *ui_get_received_message_sender(int index);
 const char *ui_get_received_message_text(int index);
 unsigned int ui_get_received_message_version(void);
 
+// Camera frame bridge – safe to call from any FreeRTOS task.
+// Decodes the JPEG and pushes it to the camera screen canvas.
+void ui_push_camera_frame(const uint8_t *jpeg_buf, size_t jpeg_len);
+
 #ifdef __cplusplus
 }
 #endif

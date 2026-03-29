@@ -90,6 +90,20 @@ if ( event_code == LV_EVENT_CLICKED) {
 }
 }
 
+void ui_event_Camera( lv_event_t * e) {
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+if ( event_code == LV_EVENT_CLICKED) {
+      // Re-init if screen was destroyed or failed to init previously
+      if (ui_Camera_Scr == NULL) {
+          ui_Camera_Scr_screen_init();
+      }
+      if (ui_Camera_Scr != NULL) {
+          _ui_screen_change( &ui_Camera_Scr, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, &ui_Camera_Scr_screen_init);
+      }
+}
+}
+
 // build funtions
 
 void ui_Home_Scr_screen_init(void)
@@ -315,6 +329,7 @@ lv_obj_add_event_cb(ui_WhatsDown, ui_event_WhatsDown, LV_EVENT_ALL, NULL);
 lv_obj_add_event_cb(ui_Alarm, ui_event_Alarm, LV_EVENT_ALL, NULL);
 lv_obj_add_event_cb(ui_Sketchpad, ui_event_Sketchpad, LV_EVENT_ALL, NULL);
 lv_obj_add_event_cb(ui_Animals, ui_event_Animals, LV_EVENT_ALL, NULL);
+lv_obj_add_event_cb(ui_Camera, ui_event_Camera, LV_EVENT_ALL, NULL);
 ui_Home_Scr_refresh_clock();
 ui_HomeClockTimer = lv_timer_create(ui_HomeClock_timer_cb, 1000, NULL);
 

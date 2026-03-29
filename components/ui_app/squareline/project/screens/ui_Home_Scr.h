@@ -37,6 +37,7 @@ extern lv_obj_t *ui_ImageSketchpad;
 extern void ui_event_Animals( lv_event_t * e);
 extern lv_obj_t *ui_Animals;
 extern lv_obj_t *ui_Image3;
+extern void ui_event_Camera( lv_event_t * e);
 extern lv_obj_t *ui_Camera;
 extern lv_obj_t *ui_ImageCamera;
 extern lv_obj_t *ui_Gallery;

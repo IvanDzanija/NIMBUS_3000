@@ -62,9 +62,7 @@ class KidBoardReceiver : public FrameReceiver {
 
  protected:
   void on_frame(const uint8_t *buf, size_t len) override {
-    // buf = raw JPEG bytes, len = size
-    // Hook into your display/UI here e.g. ui_push_camera_frame(buf, len);
-    ESP_LOGI("CAM", "Frame received: %d bytes", len);
+    ui_push_camera_frame(buf, len);
   }
 };
 static KidBoardReceiver g_camera_receiver("http://172.16.55.93:8080/latest");
