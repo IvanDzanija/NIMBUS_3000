@@ -23,8 +23,8 @@ extern const uint8_t pig_pcm_start[] asm("_binary_pig_pcm_start");
 extern const uint8_t pig_pcm_end[] asm("_binary_pig_pcm_end");
 extern const uint8_t horse_pcm_start[] asm("_binary_horse_pcm_start");
 extern const uint8_t horse_pcm_end[] asm("_binary_horse_pcm_end");
-extern const uint8_t sealion_pcm_start[] asm("_binary_sealion_pcm_start");
-extern const uint8_t sealion_pcm_end[] asm("_binary_sealion_pcm_end");
+extern const uint8_t sealion_pcm_start[] asm("_binary_sealion_v2_pcm_start");
+extern const uint8_t sealion_pcm_end[] asm("_binary_sealion_v2_pcm_end");
 extern const uint8_t message_pcm_start[] asm("_binary_message_pcm_start");
 extern const uint8_t message_pcm_end[] asm("_binary_message_pcm_end");
 
@@ -142,17 +142,17 @@ esp_err_t max98357a_write_pcm_u8(const uint8_t *pcm_data, size_t pcm_length)
 
     size_t offset = 0;
     esp_err_t err = ESP_OK;
-    uint8_t playback_volume_percent = s_alarm_force_max_volume ? 100U : s_volume_percent;
-
-    if (!s_alarm_force_max_volume &&
-        potentiometer_read_percent(&playback_volume_percent) == ESP_OK) {
-        s_volume_percent = playback_volume_percent;
-    }
 
     while (offset < pcm_length) {
         size_t samples_to_copy = MAX98357A_BUFFER_SAMPLES;
         if ((pcm_length - offset) < samples_to_copy) {
             samples_to_copy = pcm_length - offset;
+        }
+
+        uint8_t playback_volume_percent = s_alarm_force_max_volume ? 100U : s_volume_percent;
+        if (!s_alarm_force_max_volume &&
+            potentiometer_read_percent(&playback_volume_percent) == ESP_OK) {
+            s_volume_percent = playback_volume_percent;
         }
 
         for (size_t i = 0; i < samples_to_copy; ++i) {

@@ -348,6 +348,7 @@ ui_Zivotinje_screen_init();
 ui_PogodiKojaJeZivotinja_screen_init();
 ui_TocanOdgovor_screen_init();
 ui_KriviOdgovor_screen_init();
+ui_Camera_Scr_screen_init();
 ui____initial_actions0 = lv_obj_create(NULL);
 lv_disp_load_scr( ui_Home_Scr);
 ui_alarm_watch_timer = lv_timer_create(ui_alarm_watch_timer_cb, 250, NULL);
@@ -371,4 +372,5 @@ ui_Zivotinje_screen_destroy();
 ui_PogodiKojaJeZivotinja_screen_destroy();
 ui_TocanOdgovor_screen_destroy();
 ui_KriviOdgovor_screen_destroy();
+ui_Camera_Scr_screen_destroy();
 }

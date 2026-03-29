@@ -30,6 +30,8 @@ extern "C" {
 #include "screens/ui_PogodiKojaJeZivotinja.h"
 #include "screens/ui_TocanOdgovor.h"
 #include "screens/ui_KriviOdgovor.h"
+#include "screens/ui_Camera_Scr.h"
+#include "screens/ui_Gallery_Scr.h"
 
 ///////////////////// VARIABLES ////////////////////
 extern lv_anim_t * SpinAndLargen_Animation( lv_obj_t *TargetObject, int delay);

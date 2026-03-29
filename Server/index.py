@@ -31,6 +31,16 @@ def upload():
     return "OK", 200
 
 
+@app.route("/latest")
+def latest():
+    """Single JPEG frame for ESP32 Kid Board polling (FrameReceiver)."""
+    with lock:
+        frame = latest_frame
+    if frame is None:
+        return "No frame yet", 503
+    return Response(frame, mimetype="image/jpeg")
+
+
 @app.route("/video_feed")
 def video_feed():
     """Endpoint for the second ESP32 or a Browser to watch the stream."""

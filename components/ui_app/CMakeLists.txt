@@ -5,7 +5,9 @@ file(GLOB_RECURSE SQUARELINE_SRCS
 
 set(COMPONENT_SRCS 
     "ui_app.c"
+    "ui_camera_gallery.c"
     "ui_message_bridge.c"
+    "squareline/project/screens/ui_Gallery_Scr.c"
     ${SQUARELINE_SRCS}
 )
 
@@ -21,6 +23,6 @@ endforeach()
 list(APPEND COMPONENT_ADD_INCLUDEDIRS ${CMAKE_CURRENT_LIST_DIR})
 list(REMOVE_DUPLICATES COMPONENT_ADD_INCLUDEDIRS)
 
-set(COMPONENT_PRIV_REQUIRES lvgl lvgl_esp32_drivers)
+set(COMPONENT_PRIV_REQUIRES lvgl lvgl_esp32_drivers espressif__esp_jpeg)
 
 register_component()

@@ -74,8 +74,9 @@ class CameraStreamer {
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_header(client, "Content-Type", "image/jpeg");
 
-    // Pre-allocate a copy buffer once — keeps camera capture and HTTP upload decoupled.
-    const size_t BUF_SIZE = 32 * 1024;
+    // Pre-allocate a copy buffer once — avoids malloc every frame
+    // QQVGA JPEG at quality 63 is well under 10 KB
+    const size_t BUF_SIZE = 10 * 1024;
     uint8_t *jpg_copy = static_cast<uint8_t *>(
         heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 
@@ -98,13 +99,6 @@ class CameraStreamer {
       // ── KEY CHANGE ──────────────────────────────────────────────
       // 1. Copy JPEG bytes into our own buffer
       size_t jpg_len = fb->len;
-      if (jpg_len > BUF_SIZE) {
-        ESP_LOGW(TAG, "JPEG frame too large for upload buffer (%u > %u), dropping",
-                 (unsigned)jpg_len, (unsigned)BUF_SIZE);
-        esp_camera_fb_return(fb);
-        vTaskDelay(pdMS_TO_TICKS(30));
-        continue;
-      }
       memcpy(jpg_copy, fb->buf, jpg_len);
 
       // 2. Return the frame buffer immediately so the camera
