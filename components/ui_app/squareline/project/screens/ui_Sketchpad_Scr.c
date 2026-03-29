@@ -4,6 +4,7 @@
 #include "ui_message_bridge.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define UI_SKETCHPAD_MAX_POINTS 512
 #define UI_SKETCHPAD_BREAK_POINT -32768
@@ -16,9 +17,12 @@ lv_obj_t *ui_Sketchpad_Canvas = NULL;
 static lv_obj_t *ui_Sketchpad_Hint = NULL;
 static lv_obj_t *ui_Sketchpad_ClearBtn = NULL;
 static lv_obj_t *ui_Sketchpad_ClearLabel = NULL;
+static lv_obj_t *ui_Sketchpad_PredictBtn = NULL;
+static lv_obj_t *ui_Sketchpad_PredictLabel = NULL;
 static lv_obj_t *ui_Sketchpad_ColorBtn = NULL;
 static lv_obj_t *ui_Sketchpad_ColorLabel = NULL;
 static lv_obj_t *ui_Sketchpad_ColorStatus = NULL;
+static lv_obj_t *ui_Sketchpad_Result = NULL;
 
 static lv_point_t ui_Sketchpad_Points[UI_SKETCHPAD_MAX_POINTS];
 static uint16_t ui_Sketchpad_PointCount = 0;
@@ -133,9 +137,59 @@ static void ui_Sketchpad_add_break_point(void)
     ui_Sketchpad_add_point(break_point);
 }
 
+static void ui_Sketchpad_plot_brush(uint8_t *buf, int width, int height, int cx, int cy, int radius)
+{
+    int dy;
+    int dx;
+
+    for (dy = -radius; dy <= radius; dy++) {
+        int y = cy + dy;
+        if (y < 0 || y >= height) continue;
+        for (dx = -radius; dx <= radius; dx++) {
+            int x = cx + dx;
+            if (x < 0 || x >= width) continue;
+            if ((dx * dx) + (dy * dy) <= (radius * radius)) {
+                buf[(y * width) + x] = 0;
+            }
+        }
+    }
+}
+
+static void ui_Sketchpad_draw_scaled_line(uint8_t *buf, int width, int height,
+                                          lv_point_t p1, lv_point_t p2)
+{
+    int x0 = (p1.x * width) / 190;
+    int y0 = (p1.y * height) / 150;
+    int x1 = (p2.x * width) / 190;
+    int y1 = (p2.y * height) / 150;
+    int dx = LV_ABS(x1 - x0);
+    int sx = x0 < x1 ? 1 : -1;
+    int dy = -LV_ABS(y1 - y0);
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+    int brush = ((width < height ? width : height) >= 128) ? 3 : 2;
+
+    while (1) {
+        ui_Sketchpad_plot_brush(buf, width, height, x0, y0, brush);
+        if (x0 == x1 && y0 == y1) break;
+        {
+            int e2 = err * 2;
+            if (e2 >= dy) {
+                err += dy;
+                x0 += sx;
+            }
+            if (e2 <= dx) {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    }
+}
+
 static void ui_event_Sketchpad_Back(lv_event_t * e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    ui_notify_sketchpad_exit();
     _ui_screen_change(&ui_Home_Scr, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0,
                       &ui_Home_Scr_screen_init);
 }
@@ -144,6 +198,9 @@ static void ui_event_Sketchpad_Clear(lv_event_t * e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     ui_Sketchpad_reset_points();
+    if (ui_Sketchpad_Result) {
+        lv_label_set_text(ui_Sketchpad_Result, "");
+    }
 }
 
 static void ui_event_Sketchpad_Color(lv_event_t * e)
@@ -163,6 +220,40 @@ static void ui_event_Sketchpad_Color(lv_event_t * e)
     }
 
     ui_Sketchpad_apply_draw_color(color_hex, color_name);
+}
+
+static void ui_event_Sketchpad_Predict(lv_event_t * e)
+{
+    int digit = -1;
+    int confidence = 0;
+
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    if (ui_Sketchpad_PointCount == 0) {
+        if (ui_Sketchpad_Result) {
+            lv_label_set_text(ui_Sketchpad_Result, "Prvo nacrtaj broj");
+        }
+        return;
+    }
+
+    if (ui_Sketchpad_Result) {
+        lv_label_set_text(ui_Sketchpad_Result, "Prepoznajem...");
+    }
+
+    if (!ui_request_sketchpad_predict(&digit, &confidence)) {
+        if (ui_Sketchpad_Result) {
+            lv_label_set_text(ui_Sketchpad_Result, "Predikcija nije uspjela");
+        }
+        return;
+    }
+
+    if (ui_Sketchpad_Result) {
+        if (confidence > 0) {
+            lv_label_set_text_fmt(ui_Sketchpad_Result, "Prepoznat broj: %d (%d%%)", digit, confidence);
+        } else {
+            lv_label_set_text_fmt(ui_Sketchpad_Result, "Prepoznat broj: %d", digit);
+        }
+    }
 }
 
 static void ui_event_Sketchpad_Canvas(lv_event_t * e)
@@ -244,10 +335,11 @@ void ui_Sketchpad_Scr_refresh(void)
 {
     bool is_dark = ui_Dark_Mode_Switch && lv_obj_has_state(ui_Dark_Mode_Switch, LV_STATE_CHECKED);
     lv_color_t screen_bg = is_dark ? lv_color_hex(0x111111) : lv_color_hex(0xFFF7F0);
-    lv_color_t text_color = is_dark ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x111111);
+    lv_color_t text_color = lv_color_hex(0x1D3557);
     lv_color_t panel_bg = lv_color_hex(0xFFFFFF);
     lv_color_t panel_border = is_dark ? lv_color_hex(0x5A5A5A) : lv_color_hex(0xD9D9D9);
     lv_color_t accent = lv_color_hex(0xEBA678);
+    lv_color_t hint_color = is_dark ? lv_color_hex(0x6E9AC4) : lv_color_hex(0x457B9D);
 
     if (!ui_Sketchpad_Scr) return;
 
@@ -269,7 +361,7 @@ void ui_Sketchpad_Scr_refresh(void)
     }
 
     if (ui_Sketchpad_Hint) {
-        lv_obj_set_style_text_color(ui_Sketchpad_Hint, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(ui_Sketchpad_Hint, hint_color, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
 
     if (ui_Sketchpad_ClearBtn) {
@@ -281,6 +373,17 @@ void ui_Sketchpad_Scr_refresh(void)
 
     if (ui_Sketchpad_ClearLabel) {
         lv_obj_set_style_text_color(ui_Sketchpad_ClearLabel, lv_color_hex(0x111111), LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+
+    if (ui_Sketchpad_PredictBtn) {
+        lv_obj_set_style_bg_color(ui_Sketchpad_PredictBtn, lv_color_hex(0x7CCB8A), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_opa(ui_Sketchpad_PredictBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_border_opa(ui_Sketchpad_PredictBtn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_shadow_opa(ui_Sketchpad_PredictBtn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+
+    if (ui_Sketchpad_PredictLabel) {
+        lv_obj_set_style_text_color(ui_Sketchpad_PredictLabel, lv_color_hex(0x111111), LV_PART_MAIN | LV_STATE_DEFAULT);
     }
 
     if (ui_Sketchpad_ColorBtn) {
@@ -297,10 +400,15 @@ void ui_Sketchpad_Scr_refresh(void)
     if (ui_Sketchpad_ColorStatus) {
         lv_obj_set_style_text_color(ui_Sketchpad_ColorStatus, ui_Sketchpad_DrawColor, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
+
+    if (ui_Sketchpad_Result) {
+        lv_obj_set_style_text_color(ui_Sketchpad_Result, text_color, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
 }
 
 void ui_Sketchpad_Scr_screen_init(void)
 {
+    ui_notify_sketchpad_enter();
     ui_Sketchpad_Scr = lv_obj_create(NULL);
     lv_obj_clear_flag(ui_Sketchpad_Scr, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -334,17 +442,25 @@ void ui_Sketchpad_Scr_screen_init(void)
     lv_obj_add_flag(ui_Sketchpad_Canvas, LV_OBJ_FLAG_CLICKABLE);
 
     ui_Sketchpad_Hint = lv_label_create(ui_Sketchpad_Canvas);
-    lv_obj_set_width(ui_Sketchpad_Hint, 150);
-    lv_obj_set_align(ui_Sketchpad_Hint, LV_ALIGN_CENTER);
+    lv_obj_set_width(ui_Sketchpad_Hint, 170);
+    lv_obj_set_align(ui_Sketchpad_Hint, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(ui_Sketchpad_Hint, 10);
     lv_obj_set_style_text_align(ui_Sketchpad_Hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_label_set_text(ui_Sketchpad_Hint, "Crtaj prstom po bijelom polju");
+    lv_label_set_text(ui_Sketchpad_Hint, "Nacrtaj broj prstom u bijelom polju");
 
     ui_Sketchpad_ColorStatus = lv_label_create(ui_Sketchpad_Scr);
     lv_obj_set_width(ui_Sketchpad_ColorStatus, 220);
     lv_obj_set_align(ui_Sketchpad_ColorStatus, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_y(ui_Sketchpad_ColorStatus, -60);
+    lv_obj_set_y(ui_Sketchpad_ColorStatus, -84);
     lv_obj_set_style_text_align(ui_Sketchpad_ColorStatus, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_label_set_text(ui_Sketchpad_ColorStatus, "Boja crtanja: PLAVA");
+
+    ui_Sketchpad_Result = lv_label_create(ui_Sketchpad_Scr);
+    lv_obj_set_width(ui_Sketchpad_Result, 220);
+    lv_obj_set_align(ui_Sketchpad_Result, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(ui_Sketchpad_Result, -58);
+    lv_obj_set_style_text_align(ui_Sketchpad_Result, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_label_set_text(ui_Sketchpad_Result, "");
 
     ui_Sketchpad_ColorBtn = lv_btn_create(ui_Sketchpad_Scr);
     lv_obj_set_size(ui_Sketchpad_ColorBtn, 86, 34);
@@ -355,6 +471,15 @@ void ui_Sketchpad_Scr_screen_init(void)
     ui_Sketchpad_ColorLabel = lv_label_create(ui_Sketchpad_ColorBtn);
     lv_obj_set_align(ui_Sketchpad_ColorLabel, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Sketchpad_ColorLabel, "Boja");
+
+    ui_Sketchpad_PredictBtn = lv_btn_create(ui_Sketchpad_Scr);
+    lv_obj_set_size(ui_Sketchpad_PredictBtn, 94, 34);
+    lv_obj_set_align(ui_Sketchpad_PredictBtn, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(ui_Sketchpad_PredictBtn, -18);
+
+    ui_Sketchpad_PredictLabel = lv_label_create(ui_Sketchpad_PredictBtn);
+    lv_obj_set_align(ui_Sketchpad_PredictLabel, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Sketchpad_PredictLabel, "Prepoznaj");
 
     ui_Sketchpad_ClearBtn = lv_btn_create(ui_Sketchpad_Scr);
     lv_obj_set_size(ui_Sketchpad_ClearBtn, 86, 34);
@@ -368,6 +493,7 @@ void ui_Sketchpad_Scr_screen_init(void)
 
     lv_obj_add_event_cb(ui_Sketchpad_Back, ui_event_Sketchpad_Back, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Sketchpad_ColorBtn, ui_event_Sketchpad_Color, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_Sketchpad_PredictBtn, ui_event_Sketchpad_Predict, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Sketchpad_ClearBtn, ui_event_Sketchpad_Clear, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Sketchpad_Canvas, ui_event_Sketchpad_Canvas, LV_EVENT_ALL, NULL);
 
@@ -378,6 +504,7 @@ void ui_Sketchpad_Scr_screen_init(void)
 
 void ui_Sketchpad_Scr_screen_destroy(void)
 {
+    ui_notify_sketchpad_exit();
     if (ui_Sketchpad_Scr) lv_obj_del(ui_Sketchpad_Scr);
 
     ui_Sketchpad_Scr = NULL;
@@ -386,11 +513,45 @@ void ui_Sketchpad_Scr_screen_destroy(void)
     ui_Sketchpad_Title = NULL;
     ui_Sketchpad_Canvas = NULL;
     ui_Sketchpad_Hint = NULL;
+    ui_Sketchpad_Result = NULL;
     ui_Sketchpad_ColorBtn = NULL;
     ui_Sketchpad_ColorLabel = NULL;
+    ui_Sketchpad_PredictBtn = NULL;
+    ui_Sketchpad_PredictLabel = NULL;
     ui_Sketchpad_ColorStatus = NULL;
     ui_Sketchpad_ClearBtn = NULL;
     ui_Sketchpad_ClearLabel = NULL;
     ui_Sketchpad_PointCount = 0;
     ui_Sketchpad_IsDrawing = false;
+}
+
+int ui_Sketchpad_render_gray8(uint8_t *buf, size_t len, int width, int height)
+{
+    uint16_t i;
+
+    if (buf == NULL || width <= 0 || height <= 0) return 0;
+    if (len < (size_t)(width * height)) return 0;
+
+    memset(buf, 255, (size_t)(width * height));
+
+    if (ui_Sketchpad_PointCount == 0) {
+        return 1;
+    }
+
+    for (i = 0; i < ui_Sketchpad_PointCount; i++) {
+        if (ui_Sketchpad_is_break_point(ui_Sketchpad_Points[i])) continue;
+
+        if ((i + 1) < ui_Sketchpad_PointCount &&
+            !ui_Sketchpad_is_break_point(ui_Sketchpad_Points[i + 1])) {
+            ui_Sketchpad_draw_scaled_line(buf, width, height,
+                                          ui_Sketchpad_Points[i],
+                                          ui_Sketchpad_Points[i + 1]);
+        } else {
+            int x = (ui_Sketchpad_Points[i].x * width) / 190;
+            int y = (ui_Sketchpad_Points[i].y * height) / 150;
+            ui_Sketchpad_plot_brush(buf, width, height, x, y, 2);
+        }
+    }
+
+    return 1;
 }

@@ -21,6 +21,7 @@ static ui_message_sound_fn_t s_message_sound_callback = 0;
 static ui_alarm_sound_fn_t s_alarm_sound_callback = 0;
 static ui_play_animal_sound_fn_t s_play_animal_sound_callback = 0;
 static ui_sketchpad_sensor_color_fn_t s_sketchpad_sensor_color_callback = 0;
+static ui_sketchpad_predict_fn_t s_sketchpad_predict_callback = 0;
 static ui_received_message_t s_received_messages[UI_MESSAGE_HISTORY_COUNT];
 static int s_received_message_count = 0;
 static unsigned int s_received_message_version = 0;
@@ -54,6 +55,11 @@ void ui_register_play_animal_sound_callback(ui_play_animal_sound_fn_t callback)
 void ui_register_sketchpad_sensor_color_callback(ui_sketchpad_sensor_color_fn_t callback)
 {
     s_sketchpad_sensor_color_callback = callback;
+}
+
+void ui_register_sketchpad_predict_callback(ui_sketchpad_predict_fn_t callback)
+{
+    s_sketchpad_predict_callback = callback;
 }
 
 int ui_send_message_to_parent(const char *parent_id, const char *message)
@@ -103,6 +109,27 @@ int ui_request_sketchpad_sensor_color(uint32_t *color_hex_out, char *color_name_
     }
 
     return s_sketchpad_sensor_color_callback(color_hex_out, color_name_out, color_name_out_size);
+}
+
+int ui_request_sketchpad_predict(int *digit_out, int *confidence_out)
+{
+    if (s_sketchpad_predict_callback == 0 || digit_out == 0 || confidence_out == 0) {
+        return 0;
+    }
+
+    return s_sketchpad_predict_callback(digit_out, confidence_out);
+}
+
+void ui_notify_sketchpad_enter(void)
+{
+    extern void ui_notify_sketchpad_enter_from_bridge(void);
+    ui_notify_sketchpad_enter_from_bridge();
+}
+
+void ui_notify_sketchpad_exit(void)
+{
+    extern void ui_notify_sketchpad_exit_from_bridge(void);
+    ui_notify_sketchpad_exit_from_bridge();
 }
 
 void ui_set_alarm_time(int hour, int minute)

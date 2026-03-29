@@ -6,18 +6,18 @@
 // ============================================================================
 // TARGET SELECTION: Toggle this macro to switch between boards
 // ============================================================================
-// #define USE_CAMERA_NODE  // Uncomment this when building for ESP32-CAM
+#define USE_CAMERA_NODE  // Uncomment this when building for ESP32-CAM
 // ============================================================================
 
 //--------------------------------- INCLUDES ----------------------------------
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <cstdio>
 #include <string>
 
 #include "esp_event.h"
 #include "esp_http_client.h"
+#include "esp_netif.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -26,6 +26,8 @@
 
 #ifdef USE_CAMERA_NODE
 #include "CameraStreamer.h"
+#include "esp_http_server.h"
+#include "mnist_inference.h"
 #else
 #include "FrameReceiver.h"
 #include "MQTTManager.h"
@@ -34,9 +36,9 @@
 #include "freertos/queue.h"
 #include "gui.h"
 #include "max98357a.h"
+#include "mnist_inference.h"
 #include "sensors.h"
 #include "ui_app/ui_message_bridge.h"
-#include "ui_app/squareline/project/screens/ui_Sketchpad_Scr.h"
 #endif
 
 //-------------------------------- DATA TYPES ---------------------------------
@@ -56,6 +58,8 @@ typedef enum {
 //------------------------- STATIC DATA & CONSTANTS ---------------------------
 #ifdef USE_CAMERA_NODE
 static CameraStreamer g_streamer("http://172.16.55.93:8080/upload");
+static constexpr const char *kMnistServerTag = "MNIST_HTTP";
+static constexpr int kMnistHttpPort = 8081;
 #else
 
 // ── Camera receiver subclass ─────────────────────────────────────────────────
@@ -75,11 +79,7 @@ static MessengerApp *g_messenger_app = nullptr;
 static QueueHandle_t g_audio_queue = nullptr;
 static volatile bool g_audio_busy = false;
 static bool g_apds_ready = false;
-static bool g_sketchpad_receiver_paused = false;
-static constexpr const char *kPredictUrl = "http://172.16.55.93:8080/predict";
-static constexpr int kPredictSketchW = 96;
-static constexpr int kPredictSketchH = 96;
-static uint8_t s_predict_gray_buf[kPredictSketchW * kPredictSketchH];
+static constexpr const char *kMnistServerUrl = "http://172.16.55.150:8081/mnist";
 #endif
 
 //---------------------- PRIVATE FUNCTION PROTOTYPES --------------------------
@@ -88,20 +88,23 @@ extern "C" void ui_send_message_from_ui(const char *parent_id, const char *messa
 extern "C" void ui_request_message_sound_from_bridge(void);
 extern "C" void ui_request_alarm_sound_from_bridge(void);
 extern "C" void ui_request_animal_sound_from_bridge(ui_animal_sound_t animal);
-extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
-                                                        int *confidence_out);
+extern "C" int ui_request_sketchpad_digit_classify_from_bridge(
+    int *digit_out, int *confidence_out);
+extern "C" void ui_notify_sketchpad_enter_from_bridge(void);
+extern "C" void ui_notify_sketchpad_exit_from_bridge(void);
 static void init_time_sync();
 static void audio_task(void *parameter);
 static void queue_audio_event(audio_event_t event);
 static uint32_t sketchpad_sensor_color_name_to_hex(const char *color_name);
-static bool parse_predict_response(const char *response, int *digit_out,
-                                   int *confidence_out);
-typedef struct {
-  char *buf;
-  size_t cap;
-  size_t len;
-} predict_http_response_t;
-static esp_err_t predict_http_event_handler(esp_http_client_event_t *evt);
+static bool sketchpad_build_http_payload(uint8_t *pixels_out, size_t len);
+#endif
+
+#ifdef USE_CAMERA_NODE
+static esp_err_t mnist_http_handler(httpd_req_t *req);
+static void start_mnist_http_server(void);
+static void log_station_ip(const char *tag);
+#else
+static void log_station_ip(const char *tag);
 #endif
 
 //------------------------------ SHARED FUNCTIONS -----------------------------
@@ -123,10 +126,16 @@ static void wifi_init() {
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
   esp_wifi_start();
   esp_wifi_connect();
+}
 
-  esp_log_level_set("HTTP_CLIENT", ESP_LOG_NONE);
-  esp_log_level_set("transport_base", ESP_LOG_NONE);
-  esp_log_level_set("esp-tls", ESP_LOG_NONE);
+static void log_station_ip(const char *tag) {
+  esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (!netif) return;
+
+  esp_netif_ip_info_t ip_info = {};
+  if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+    ESP_LOGI(tag, "STA IP: " IPSTR, IP2STR(&ip_info.ip));
+  }
 }
 
 //------------------------ KID BOARD HELPER FUNCTIONS -------------------------
@@ -162,73 +171,22 @@ static uint32_t sketchpad_sensor_color_name_to_hex(const char *color_name) {
   return 0x1D3557;
 }
 
-static bool parse_predict_response(const char *response, int *digit_out,
-                                   int *confidence_out) {
-  int digit = -1;
-  int confidence = 0;
-  float confidence_f = 0.0f;
-
-  if (!response || !digit_out || !confidence_out) return false;
-
-  if (sscanf(response, "{\"digit\":%d,\"confidence\":%d}", &digit, &confidence) ==
-      2) {
-    *digit_out = digit;
-    *confidence_out = confidence;
-    return true;
+static bool sketchpad_build_http_payload(uint8_t *pixels_out, size_t len) {
+  if (!pixels_out || len != (MNIST_DIM * MNIST_DIM)) {
+    return false;
   }
 
-  if (sscanf(response,
-             "{\"digit\":%d,\"confidence\":%f}",
-             &digit, &confidence_f) == 2) {
-    *digit_out = digit;
-    *confidence_out = (int)(confidence_f <= 1.0f ? confidence_f * 100.0f
-                                                 : confidence_f);
-    return true;
-  }
-
-  if (sscanf(response, "{\"class\":%d,\"confidence\":%d}", &digit, &confidence) ==
-      2) {
-    *digit_out = digit;
-    *confidence_out = confidence;
-    return true;
-  }
-
-  if (sscanf(response, "{\"prediction\":%d}", &digit) == 1) {
-    *digit_out = digit;
-    *confidence_out = 0;
-    return true;
-  }
-
-  for (const char *p = response; *p; ++p) {
-    if (*p >= '0' && *p <= '9') {
-      *digit_out = *p - '0';
-      *confidence_out = 0;
-      return true;
+  for (int row = 0; row < MNIST_DIM; ++row) {
+    for (int col = 0; col < MNIST_DIM; ++col) {
+      int src_x = CANVAS_X + (col * CANVAS_W) / MNIST_DIM;
+      int src_y = CANVAS_Y + (row * CANVAS_H) / MNIST_DIM;
+      uint16_t raw = framebuf_get_pixel(src_x, src_y);
+      uint8_t gray = rgb565_to_gray(raw);
+      pixels_out[row * MNIST_DIM + col] = (uint8_t)(255 - gray);
     }
   }
 
-  return false;
-}
-
-static esp_err_t predict_http_event_handler(esp_http_client_event_t *evt) {
-  if (!evt || !evt->user_data) return ESP_OK;
-
-  predict_http_response_t *resp =
-      static_cast<predict_http_response_t *>(evt->user_data);
-
-  if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data && evt->data_len > 0 &&
-      resp->buf && resp->cap > 0) {
-    size_t copy_len = (size_t)evt->data_len;
-    size_t remaining = (resp->cap - 1 > resp->len) ? (resp->cap - 1 - resp->len) : 0;
-    if (copy_len > remaining) copy_len = remaining;
-    if (copy_len > 0) {
-      memcpy(resp->buf + resp->len, evt->data, copy_len);
-      resp->len += copy_len;
-      resp->buf[resp->len] = '\0';
-    }
-  }
-
-  return ESP_OK;
+  return true;
 }
 
 static void audio_task(void *parameter) {
@@ -336,127 +294,138 @@ extern "C" int ui_request_sketchpad_sensor_color_from_bridge(
   return 1;
 }
 
-extern "C" void ui_notify_sketchpad_enter_from_bridge(void) {
-  if (!g_sketchpad_receiver_paused) {
-    ESP_LOGI("APP", "Entering sketchpad mode: pausing frame receiver");
-    g_camera_receiver.stop();
-    g_sketchpad_receiver_paused = true;
+extern "C" int ui_request_sketchpad_digit_classify_from_bridge(
+    int *digit_out, int *confidence_out) {
+  uint8_t pixels[MNIST_DIM * MNIST_DIM];
+  char response[64] = {0};
+  int digit = -1;
+  int confidence = 0;
+
+  if (!digit_out || !confidence_out) {
+    return 0;
   }
+  if (!sketchpad_build_http_payload(pixels, sizeof(pixels))) {
+    return 0;
+  }
+
+  esp_http_client_config_t config = {};
+  config.url = kMnistServerUrl;
+  config.method = HTTP_METHOD_POST;
+  config.timeout_ms = 5000;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (!client) {
+    return 0;
+  }
+
+  esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
+  esp_http_client_set_post_field(client, (const char *)pixels, sizeof(pixels));
+
+  esp_err_t err = esp_http_client_perform(client);
+  if (err != ESP_OK) {
+    ESP_LOGE("APP", "Remote MNIST POST failed: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return 0;
+  }
+
+  int read_len = esp_http_client_read_response(client, response, sizeof(response) - 1);
+  esp_http_client_cleanup(client);
+  if (read_len <= 0) {
+    return 0;
+  }
+
+  if (sscanf(response, "{\"digit\":%d,\"confidence\":%d}", &digit, &confidence) != 2) {
+    ESP_LOGE("APP", "Unexpected MNIST response: %s", response);
+    return 0;
+  }
+
+  *digit_out = digit;
+  *confidence_out = confidence;
+  ESP_LOGI("APP", "Remote MNIST result: %d (%d%%)", *digit_out, *confidence_out);
+  return 1;
+}
+
+extern "C" void ui_notify_sketchpad_enter_from_bridge(void) {
+  ESP_LOGI("APP", "Entering sketchpad mode: pausing background receivers");
+  g_camera_receiver.stop();
+  MQTTManager::get_instance().pause();
 }
 
 extern "C" void ui_notify_sketchpad_exit_from_bridge(void) {
-  if (g_sketchpad_receiver_paused) {
-    ESP_LOGI("APP", "Leaving sketchpad mode: resuming frame receiver");
-    g_camera_receiver.start();
-    g_sketchpad_receiver_paused = false;
-  }
+  ESP_LOGI("APP", "Leaving sketchpad mode: resuming background receivers");
+  MQTTManager::get_instance().resume();
+  g_camera_receiver.start();
 }
 
-extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
-                                                        int *confidence_out) {
-  static constexpr size_t kGraySize = kPredictSketchW * kPredictSketchH;
-  static constexpr int kPredictAttempts = 3;
-  static constexpr TickType_t kPredictRetryDelay = pdMS_TO_TICKS(1500);
+extern "C" uint16_t framebuf_get_pixel(int x, int y) {
+  uint16_t pixel = 0xFFFF;
 
-  char response[128] = {0};
-  char width_header[8] = {0};
-  char height_header[8] = {0};
+  if (!ui_request_sketchpad_pixel_read(x, y, &pixel)) {
+    return 0xFFFF;
+  }
+
+  return pixel;
+}
+#endif
+
+#ifdef USE_CAMERA_NODE
+static esp_err_t mnist_http_handler(httpd_req_t *req) {
+  uint8_t pixels[MNIST_DIM * MNIST_DIM];
+  float confidence = 0.0f;
   int digit = -1;
-  int confidence = 0;
-  int result = 0;
-  bool paused_for_predict = false;
-  int attempt = 0;
+  char response[64];
 
-  if (!digit_out || !confidence_out) return 0;
-
-  if (!g_sketchpad_receiver_paused) {
-    ESP_LOGI("APP", "Predict: privremeno pauziram frame receiver");
-    g_camera_receiver.stop();
-    g_sketchpad_receiver_paused = true;
-    paused_for_predict = true;
-    vTaskDelay(pdMS_TO_TICKS(100));
+  if (req->content_len != sizeof(pixels)) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_sendstr(req, "{\"error\":\"invalid_length\"}");
+    return ESP_FAIL;
   }
 
-  if (!ui_Sketchpad_render_gray8(s_predict_gray_buf, kGraySize, kPredictSketchW,
-                                 kPredictSketchH)) {
-    ESP_LOGE("APP", "Sketchpad render failed");
-    goto cleanup;
+  int received = httpd_req_recv(req, (char *)pixels, sizeof(pixels));
+  if (received != (int)sizeof(pixels)) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_sendstr(req, "{\"error\":\"recv_failed\"}");
+    return ESP_FAIL;
   }
 
-  snprintf(width_header, sizeof(width_header), "%d", kPredictSketchW);
-  snprintf(height_header, sizeof(height_header), "%d", kPredictSketchH);
-  for (attempt = 1; attempt <= kPredictAttempts; ++attempt) {
-    esp_http_client_config_t config = {};
-    predict_http_response_t http_response = {
-        .buf = response,
-        .cap = sizeof(response),
-        .len = 0,
-    };
-    esp_http_client_handle_t client = nullptr;
-
-    memset(response, 0, sizeof(response));
-
-    config.url = kPredictUrl;
-    config.method = HTTP_METHOD_POST;
-    config.timeout_ms = 8000;
-    config.keep_alive_enable = false;
-    config.event_handler = predict_http_event_handler;
-    config.user_data = &http_response;
-    client = esp_http_client_init(&config);
-    if (!client) {
-      ESP_LOGW("APP", "Predict init nije uspio (pokusaj %d/%d)", attempt,
-               kPredictAttempts);
-    } else {
-      esp_http_client_set_header(client, "Content-Type",
-                                 "application/octet-stream");
-      esp_http_client_set_header(client, "X-Width", width_header);
-      esp_http_client_set_header(client, "X-Height", height_header);
-      esp_http_client_set_header(client, "X-Format", "gray8");
-      esp_http_client_set_post_field(
-          client, reinterpret_cast<const char *>(s_predict_gray_buf),
-          (int)kGraySize);
-
-      {
-        esp_err_t err = esp_http_client_perform(client);
-        if (err == ESP_OK && http_response.len > 0 &&
-            parse_predict_response(response, &digit, &confidence)) {
-          *digit_out = digit;
-          *confidence_out = confidence;
-          ESP_LOGI("APP", "Predict result: %d (%d%%)", digit, confidence);
-          result = 1;
-        } else if (err != ESP_OK) {
-          ESP_LOGW("APP", "Predict POST nije uspio (pokusaj %d/%d): %s", attempt,
-                   kPredictAttempts, esp_err_to_name(err));
-        } else if (http_response.len == 0) {
-          ESP_LOGW("APP", "Predict response prazan (pokusaj %d/%d)", attempt,
-                   kPredictAttempts);
-        } else {
-          ESP_LOGW("APP", "Predict response neispravan (pokusaj %d/%d): %s",
-                   attempt, kPredictAttempts, response);
-        }
-      }
-    }
-
-    if (client) {
-      esp_http_client_cleanup(client);
-    }
-
-    if (result == 1) {
-      break;
-    }
-
-    if (attempt < kPredictAttempts) {
-      vTaskDelay(kPredictRetryDelay);
-    }
+  if (!mnist::init()) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_sendstr(req, "{\"error\":\"mnist_init_failed\"}");
+    return ESP_FAIL;
   }
 
-cleanup:
-  if (paused_for_predict) {
-    ESP_LOGI("APP", "Predict: vracam frame receiver");
-    g_camera_receiver.start();
-    g_sketchpad_receiver_paused = false;
+  digit = mnist::predict_u8(pixels, &confidence);
+  if (digit < 0) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_sendstr(req, "{\"error\":\"mnist_predict_failed\"}");
+    return ESP_FAIL;
   }
-  return result;
+
+  snprintf(response, sizeof(response), "{\"digit\":%d,\"confidence\":%d}", digit,
+           (int)(confidence * 100.0f + 0.5f));
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_sendstr(req, response);
+  ESP_LOGI(kMnistServerTag, "Predicted %d (%d%%)", digit,
+           (int)(confidence * 100.0f + 0.5f));
+  return ESP_OK;
+}
+
+static void start_mnist_http_server(void) {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = kMnistHttpPort;
+
+  httpd_handle_t server = nullptr;
+  if (httpd_start(&server, &config) != ESP_OK) {
+    ESP_LOGE(kMnistServerTag, "Failed to start server");
+    return;
+  }
+
+  httpd_uri_t mnist_uri = {};
+  mnist_uri.uri = "/mnist";
+  mnist_uri.method = HTTP_POST;
+  mnist_uri.handler = mnist_http_handler;
+  httpd_register_uri_handler(server, &mnist_uri);
+  ESP_LOGI(kMnistServerTag, "HTTP server ready on port %d", kMnistHttpPort);
 }
 #endif
 
@@ -473,6 +442,8 @@ extern "C" void app_main(void) {
   ESP_LOGI("APP", "Starting in CAMERA NODE mode");
 
   vTaskDelay(pdMS_TO_TICKS(3000));
+  log_station_ip("APP");
+  start_mnist_http_server();
 
   if (g_streamer.init() == ESP_OK) {
     g_streamer.start();
@@ -497,8 +468,10 @@ extern "C" void app_main(void) {
 
   ui_register_sketchpad_sensor_color_callback(
       ui_request_sketchpad_sensor_color_from_bridge);
-  ui_register_sketchpad_predict_callback(
-      ui_request_sketchpad_predict_from_bridge);
+  ui_register_sketchpad_digit_classify_callback(
+      ui_request_sketchpad_digit_classify_from_bridge);
+  ui_register_sketchpad_enter_callback(ui_notify_sketchpad_enter_from_bridge);
+  ui_register_sketchpad_exit_callback(ui_notify_sketchpad_exit_from_bridge);
   gui_init();
 
   g_audio_queue = xQueueCreate(8, sizeof(audio_event_t));
@@ -508,6 +481,7 @@ extern "C" void app_main(void) {
 
   vTaskDelay(pdMS_TO_TICKS(5000));  // Time for WiFi to connect
   init_time_sync();
+  log_station_ip("APP");
 
   g_camera_receiver.start();  // Start pulling frames from Python server
 

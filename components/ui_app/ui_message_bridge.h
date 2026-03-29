@@ -16,6 +16,7 @@ typedef void (*ui_send_message_fn_t)(const char *parent_id, const char *message)
 typedef void (*ui_message_sound_fn_t)(void);
 typedef void (*ui_alarm_sound_fn_t)(void);
 typedef int (*ui_sketchpad_sensor_color_fn_t)(uint32_t *color_hex_out, char *color_name_out, size_t color_name_out_size);
+typedef int (*ui_sketchpad_predict_fn_t)(int *digit_out, int *confidence_out);
 
 typedef enum {
     UI_ANIMAL_SOUND_DOG = 0,
@@ -33,11 +34,15 @@ void ui_register_message_sound_callback(ui_message_sound_fn_t callback);
 void ui_register_alarm_sound_callback(ui_alarm_sound_fn_t callback);
 void ui_register_play_animal_sound_callback(ui_play_animal_sound_fn_t callback);
 void ui_register_sketchpad_sensor_color_callback(ui_sketchpad_sensor_color_fn_t callback);
+void ui_register_sketchpad_predict_callback(ui_sketchpad_predict_fn_t callback);
 int ui_send_message_to_parent(const char *parent_id, const char *message);
 int ui_request_message_sound(void);
 int ui_request_alarm_sound(void);
 int ui_request_animal_sound(ui_animal_sound_t animal);
 int ui_request_sketchpad_sensor_color(uint32_t *color_hex_out, char *color_name_out, size_t color_name_out_size);
+int ui_request_sketchpad_predict(int *digit_out, int *confidence_out);
+void ui_notify_sketchpad_enter(void);
+void ui_notify_sketchpad_exit(void);
 void ui_set_alarm_time(int hour, int minute);
 int ui_get_alarm_hour(void);
 int ui_get_alarm_minute(void);

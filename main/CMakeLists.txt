@@ -9,13 +9,22 @@ set(COMPONENT_SRCS
     "veml7700.c"
 )
 set(COMPONENT_ADD_INCLUDEDIRS ".")
+set(COMPONENT_REQUIRES
+    ui_app
+    esp_http_client
+    esp_adc
+    esp_wifi
+    esp_event
+    esp_netif
+    nvs_flash
+)
 set(COMPONENT_EMBED_FILES
     "../sounds/dog.pcm"
     "../sounds/cat.pcm"
     "../sounds/cow.pcm"
     "../sounds/pig.pcm"
     "../sounds/horse.pcm"
-    "../sounds/sealion.pcm"
+    "../sounds/sealion_v2.pcm"
     "../sounds/message.pcm"
 )
 
