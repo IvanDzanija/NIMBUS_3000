@@ -6,7 +6,7 @@
 // ============================================================================
 // TARGET SELECTION: Toggle this macro to switch between boards
 // ============================================================================
-// #define USE_CAMERA_NODE  // Uncomment this when building for ESP32-CAM
+//#define USE_CAMERA_NODE  // Uncomment this when building for ESP32-CAM
 // ============================================================================
 
 //--------------------------------- INCLUDES ----------------------------------
