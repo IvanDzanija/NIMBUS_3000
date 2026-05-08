@@ -1,8 +1,8 @@
 # WhatsDown Mobile
 
-Flutter companion app for the parent side of WhatsDown. It connects to the MQTT
-broker, subscribes to messages from the ESP32 kid board, sends replies, and keeps
-a small local message history with `shared_preferences`.
+Flutter companion app for the parent side of NIMBUS 3000. It connects to the
+MQTT broker, subscribes to messages from the ESP32 kid board, sends replies, and
+keeps a small local message history with `shared_preferences`.
 
 ## Run
 

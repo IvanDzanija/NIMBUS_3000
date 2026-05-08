@@ -2,7 +2,8 @@
 
 This directory contains the local services used by the WhatsDown demo:
 
-- `index.py` runs a Flask server for camera relay and MNIST sketchpad prediction.
+- `index.py` runs a Flask server for camera relay and MNIST sketchpad
+  prediction.
 - `mnist.py` trains a small CNN and writes `mnist_cnn.pt`.
 - `mnist_cnn.pt` is the trained model loaded by `index.py`.
 - `mosquitto.conf` starts a local MQTT broker on port `1883`.

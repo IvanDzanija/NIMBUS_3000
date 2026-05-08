@@ -1,6 +1,6 @@
 # Firmware Main Component
 
-This is the ESP-IDF application component for the WhatsDown boards.
+This is the ESP-IDF application component for the NIMBUS 3000 boards.
 
 ## Important Files
 
@@ -11,11 +11,12 @@ This is the ESP-IDF application component for the WhatsDown boards.
 - `MessengerApp.h`, `ChatManager.h`, `ChatSession.h`, `Message.h`, and
   `MQTTManager.h` implement the MQTT chat flow.
 - `CameraStreamer.h` posts ESP32-CAM JPEG frames to the Flask server.
-- `FrameReceiver.h` pulls JPEG frames from the Flask server for the kid board UI.
+- `FrameReceiver.h` pulls JPEG frames from the Flask server for the kid board
+  UI.
 - `max98357a.*`, `potentiometer.*`, and `sounds/` handle embedded audio.
 - `sensors.*`, `APDS_9960.*`, `veml7700.*`, and `i2c_manager.*` handle sensor
   access used by the sketchpad/color features.
 - `gui.*` initializes LVGL, display, touch input, and the UI component.
 
-The firmware now sends sketchpad recognition to the Python server, so old
-unused embedded MNIST model files were removed from this component.
+The firmware now sends sketchpad recognition to the Python server, so old unused
+embedded MNIST model files were removed from this component.
