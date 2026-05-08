@@ -1,7 +1,7 @@
-# WhatsDown
+# NIMBUS 3000
 
-WhatsDown is an ESP32-based communication and activity prototype for a child and
-parent. The main ESP32 board runs a touch UI with quick messages, received
+NIMBUS 3000 is an ESP32-based communication and activity prototype for a child
+and parent. The main ESP32 board runs a touch UI with quick messages, received
 messages, an alarm, a camera preview/gallery, a sketchpad with digit prediction,
 color sensing, and embedded sound playback. A companion ESP32-CAM streams JPEG
 frames to a Python server, and a Flutter app lets a parent chat with the board
@@ -12,24 +12,24 @@ that demo context. The repository documentation is in English for GitHub.
 
 ## What Is Inside
 
-| Path | Purpose |
-| --- | --- |
-| `main/` | ESP-IDF firmware entry point, Wi-Fi setup, MQTT chat, camera receive/send modes, sensors, audio, and app wiring. |
-| `components/ui_app/` | LVGL/SquareLine UI component, custom screen logic, message bridge, camera canvas, and photo gallery buffer. |
-| `components/lvgl/`, `components/lvgl_esp32_drivers/` | Third-party LVGL and ESP32 display/touch drivers used by the firmware. |
-| `Server/` | Flask service for camera relay and sketchpad MNIST prediction, plus Mosquitto broker config. |
-| `whatsdownmobile/` | Flutter parent chat app that talks to the same MQTT broker as the ESP32 board. |
-| `sounds/` | PCM sound assets embedded into the firmware. |
-| `scripts/` | Helper scripts for applying the LVGL driver patch and regenerating compact UI image C files. |
-| `patches/` | Patch needed for the LVGL ESP32 driver version used by this project. |
-| `doc/` | Hardware documentation and schematics for the ByteLab development kit. |
+| Path                                                 | Purpose                                                                                                          |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `main/`                                              | ESP-IDF firmware entry point, Wi-Fi setup, MQTT chat, camera receive/send modes, sensors, audio, and app wiring. |
+| `components/ui_app/`                                 | LVGL/SquareLine UI component, custom screen logic, message bridge, camera canvas, and photo gallery buffer.      |
+| `components/lvgl/`, `components/lvgl_esp32_drivers/` | Third-party LVGL and ESP32 display/touch drivers used by the firmware.                                           |
+| `Server/`                                            | Flask service for camera relay and sketchpad MNIST prediction, plus Mosquitto broker config.                     |
+| `whatsdownmobile/`                                   | Flutter parent chat app that talks to the same MQTT broker as the ESP32 board.                                   |
+| `sounds/`                                            | PCM sound assets embedded into the firmware.                                                                     |
+| `scripts/`                                           | Helper scripts for applying the LVGL driver patch and regenerating compact UI image C files.                     |
+| `patches/`                                           | Patch needed for the LVGL ESP32 driver version used by this project.                                             |
+| `doc/`                                               | Hardware documentation and schematics for the ByteLab development kit.                                           |
 
 ## Architecture
 
 1. The ESP32 kid board connects to Wi-Fi, starts LVGL, subscribes to
    `chat/<parent>/<kid>`, and publishes quick replies to `chat/<kid>/<parent>`.
-2. The ESP32-CAM firmware mode posts JPEG frames to `POST /upload` on the
-   Python server.
+2. The ESP32-CAM firmware mode posts JPEG frames to `POST /upload` on the Python
+   server.
 3. The kid board pulls `GET /latest`, decodes the JPEG into an LVGL canvas, and
    can store small thumbnails in the gallery.
 4. The sketchpad posts a 96x96 grayscale image to `POST /predict`; the server
@@ -99,5 +99,5 @@ Use `MY_ID=Dad` to run the second parent identity. `KID_ID` defaults to `kid`.
 ## Repository Cleanup
 
 Generated editor history, local VS Code settings, and downloaded MNIST raw data
-are ignored. The trained `Server/mnist_cnn.pt` model is kept because it is needed
-to run the prediction server without retraining.
+are ignored. The trained `Server/mnist_cnn.pt` model is kept because it is
+needed to run the prediction server without retraining.
