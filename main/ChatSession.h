@@ -33,7 +33,7 @@ class ChatSession {
     if (on_receive) on_receive(msg);
   }
 
-  // Optional callback — set this to hook into your UI / display
+  // Optional callback for UI/display integration.
   std::function<void(const Message &)> on_receive;
 
  private:

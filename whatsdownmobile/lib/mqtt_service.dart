@@ -1,22 +1,26 @@
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:flutter/foundation.dart'; 
+import 'package:flutter/foundation.dart';
 
 class MqttService {
   final String brokerIp;
   final String myId;
-  final String kidId = "kid";
+  final String kidId;
 
   late MqttServerClient _client;
 
   Function(String message)? onMessageFromKid;
-  VoidCallback? onConnected;      // ✅ added
-  VoidCallback? onDisconnected;   // ✅ added
-  Function(String)? onError;      // ✅ added
+  VoidCallback? onConnected;
+  VoidCallback? onDisconnected;
+  Function(String)? onError;
 
-  MqttService({required this.brokerIp, required this.myId});
+  MqttService({
+    required this.brokerIp,
+    required this.myId,
+    required this.kidId,
+  });
 
-  String get _inboxTopic  => "chat/$kidId/$myId";
+  String get _inboxTopic => "chat/$kidId/$myId";
   String get _outboxTopic => "chat/$myId/$kidId";
 
   Future<void> connect() async {
@@ -33,17 +37,17 @@ class MqttService {
     try {
       await _client.connect();
     } catch (e) {
-      onError?.call(e.toString());   // ✅ surfaces the real error in UI
+      onError?.call(e.toString());
       _client.disconnect();
       return;
     }
 
     if (_client.connectionStatus?.state == MqttConnectionState.connected) {
-      onConnected?.call();           // ✅ tells the UI we're live
+      onConnected?.call();
       _subscribe();
     } else {
       onError?.call(
-        _client.connectionStatus?.returnCode.toString() ?? "unknown"
+        _client.connectionStatus?.returnCode.toString() ?? "unknown",
       );
     }
   }

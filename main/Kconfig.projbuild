@@ -1,0 +1,40 @@
+menu "WhatsDown application"
+
+    config WHATSDOWN_CAMERA_NODE
+        bool "Build as ESP32-CAM streaming node"
+        default n
+        help
+            Enable this when flashing the ESP32-CAM node. Leave it disabled for
+            the main kid board with display, audio, sensors, MQTT, and UI.
+
+    config WHATSDOWN_WIFI_SSID
+        string "Wi-Fi SSID"
+        default "CHANGE_ME"
+        help
+            Network SSID used by the firmware.
+
+    config WHATSDOWN_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+        help
+            Network password. Keep real credentials in local sdkconfig only.
+
+    config WHATSDOWN_SERVER_BASE_URL
+        string "Python server base URL"
+        default "http://192.168.1.10:8080"
+        help
+            Base URL of the Flask server, without a trailing slash.
+
+    config WHATSDOWN_MQTT_URI
+        string "MQTT broker URI"
+        default "mqtt://192.168.1.10:1883"
+        help
+            Broker URI used for parent/kid chat messages.
+
+    config WHATSDOWN_KID_ID
+        string "Kid device chat ID"
+        default "kid"
+        help
+            MQTT chat identity used by the ESP32 kid board.
+
+endmenu

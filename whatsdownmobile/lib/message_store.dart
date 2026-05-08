@@ -1,10 +1,9 @@
- 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class MessageStore {
   final String myId;
-  static const int maxMessages = 200;  // keep last 200 per conversation
+  static const int maxMessages = 200;
 
   MessageStore({required this.myId});
 
@@ -26,7 +25,6 @@ class MessageStore {
       "time": DateTime.now().toIso8601String(),
     }));
 
-    // Trim to max
     final trimmed = raw.length > maxMessages
         ? raw.sublist(raw.length - maxMessages)
         : raw;

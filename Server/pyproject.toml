@@ -1,7 +1,7 @@
 [project]
 name = "server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Flask camera relay and MNIST prediction service for WhatsDown."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

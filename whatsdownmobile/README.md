@@ -1,17 +1,27 @@
-# whatsdownmobile
+# WhatsDown Mobile
 
-A new Flutter project.
+Flutter companion app for the parent side of WhatsDown. It connects to the MQTT
+broker, subscribes to messages from the ESP32 kid board, sends replies, and keeps
+a small local message history with `shared_preferences`.
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter run --dart-define=BROKER_IP=192.168.1.10 --dart-define=MY_ID=Mom
+```
 
-A few resources to get you started if this is your first Flutter project:
+Useful runtime values:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- `BROKER_IP`: IP address of the machine running Mosquitto.
+- `MY_ID`: parent identity, usually `Mom` or `Dad`.
+- `KID_ID`: kid board identity, defaults to `kid`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Files
+
+- `lib/main.dart` builds the chat UI and handles connection states.
+- `lib/mqtt_service.dart` wraps MQTT connect, subscribe, publish, and errors.
+- `lib/message_store.dart` stores recent messages locally.
+
+The platform folders (`android/`, `ios/`, `web/`, `macos/`, `linux/`,
+`windows/`) are the normal Flutter generated host projects.

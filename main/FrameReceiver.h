@@ -8,7 +8,7 @@
 
 class FrameReceiver {
  private:
-  std::string _server_url;  // e.g. "http://172.16.55.x/latest"
+  std::string _server_url;
   static constexpr const char *TAG = "FrameReceiver";
   TaskHandle_t _task_handle = nullptr;
   volatile bool _running = false;
@@ -86,18 +86,17 @@ class FrameReceiver {
         int status = esp_http_client_get_status_code(client);
         if (status == 200 && _frame_len > 0) {
           _no_frame_log_divider = 0;
-          // ── Frame is in _frame_buf, _frame_len bytes ──
-          // Do whatever you need with it here:
+          // Frame is in _frame_buf, _frame_len bytes.
           on_frame(_frame_buf, _frame_len);
         } else if (status == 503) {
           _no_frame_log_divider++;
           if ((_no_frame_log_divider % 20) == 1) {
-            ESP_LOGW(TAG, "Server jos nema frame, cekam...");
+            ESP_LOGW(TAG, "Server has no frame yet; waiting...");
           }
           vTaskDelay(pdMS_TO_TICKS(200));
         }
       } else {
-        ESP_LOGW(TAG, "Frame request nije uspio: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "Frame request failed: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
         client = nullptr;
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -119,12 +118,10 @@ class FrameReceiver {
   }
 
  protected:
-  // ── Override this to use the frame ──────────────────────────
-  // Default just logs the size. Replace with display/CV/forward logic.
+  // Override this to use the frame. The default just logs the size.
   virtual void on_frame(const uint8_t *buf, size_t len) {
     ESP_LOGI(TAG, "Got frame: %d bytes", len);
   }
-  // ────────────────────────────────────────────────────────────
 
  public:
   explicit FrameReceiver(const std::string &url) : _server_url(url) {}

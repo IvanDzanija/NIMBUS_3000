@@ -3,12 +3,6 @@
  * @brief Integrated ESP32-CAM and Kid Board Messenger App
  */
 
-// ============================================================================
-// TARGET SELECTION: Toggle this macro to switch between boards
-// ============================================================================
-//#define USE_CAMERA_NODE  // Uncomment this when building for ESP32-CAM
-// ============================================================================
-
 //--------------------------------- INCLUDES ----------------------------------
 #include <cstdlib>
 #include <cstring>
@@ -23,13 +17,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
-#ifdef USE_CAMERA_NODE
+#if CONFIG_WHATSDOWN_CAMERA_NODE
 #include "CameraStreamer.h"
 #else
 #include "FrameReceiver.h"
 #include "MQTTManager.h"
-#include "MessangerApp.h"
+#include "MessengerApp.h"
 #include "esp_sntp.h"
 #include "freertos/queue.h"
 #include "gui.h"
@@ -40,7 +35,7 @@
 #endif
 
 //-------------------------------- DATA TYPES ---------------------------------
-#ifndef USE_CAMERA_NODE
+#if !CONFIG_WHATSDOWN_CAMERA_NODE
 typedef enum {
   AUDIO_EVENT_MESSAGE = 1,
   AUDIO_EVENT_DOG,
@@ -54,11 +49,10 @@ typedef enum {
 #endif
 
 //------------------------- STATIC DATA & CONSTANTS ---------------------------
-#ifdef USE_CAMERA_NODE
-static CameraStreamer g_streamer("http://172.16.55.93:8080/upload");
+#if CONFIG_WHATSDOWN_CAMERA_NODE
+static CameraStreamer g_streamer(CONFIG_WHATSDOWN_SERVER_BASE_URL "/upload");
 #else
 
-// ── Camera receiver subclass ─────────────────────────────────────────────────
 class KidBoardReceiver : public FrameReceiver {
  public:
   explicit KidBoardReceiver(const std::string &url) : FrameReceiver(url) {}
@@ -68,22 +62,22 @@ class KidBoardReceiver : public FrameReceiver {
     ui_push_camera_frame(buf, len);
   }
 };
-static KidBoardReceiver g_camera_receiver("http://172.16.55.93:8080/latest");
-// ─────────────────────────────────────────────────────────────────────────────
+static KidBoardReceiver g_camera_receiver(CONFIG_WHATSDOWN_SERVER_BASE_URL "/latest");
 
 static MessengerApp *g_messenger_app = nullptr;
 static QueueHandle_t g_audio_queue = nullptr;
 static volatile bool g_audio_busy = false;
 static bool g_apds_ready = false;
 static bool g_sketchpad_receiver_paused = false;
-static constexpr const char *kPredictUrl = "http://172.16.55.93:8080/predict";
+static constexpr const char *kPredictUrl =
+    CONFIG_WHATSDOWN_SERVER_BASE_URL "/predict";
 static constexpr int kPredictSketchW = 96;
 static constexpr int kPredictSketchH = 96;
 static uint8_t s_predict_gray_buf[kPredictSketchW * kPredictSketchH];
 #endif
 
 //---------------------- PRIVATE FUNCTION PROTOTYPES --------------------------
-#ifndef USE_CAMERA_NODE
+#if !CONFIG_WHATSDOWN_CAMERA_NODE
 extern "C" void ui_send_message_from_ui(const char *parent_id, const char *message);
 extern "C" void ui_request_message_sound_from_bridge(void);
 extern "C" void ui_request_alarm_sound_from_bridge(void);
@@ -107,22 +101,29 @@ static esp_err_t predict_http_event_handler(esp_http_client_event_t *evt);
 //------------------------------ SHARED FUNCTIONS -----------------------------
 
 static void wifi_init() {
-  nvs_flash_init();
-  esp_netif_init();
-  esp_event_loop_create_default();
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    err = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(err);
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
   esp_netif_create_default_wifi_sta();
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  esp_wifi_init(&cfg);
+  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
   wifi_config_t wifi_config = {};
-  strcpy((char *)wifi_config.sta.ssid, "Bird");
-  strcpy((char *)wifi_config.sta.password, "BIRD*2025*");
+  snprintf((char *)wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid), "%s",
+           CONFIG_WHATSDOWN_WIFI_SSID);
+  snprintf((char *)wifi_config.sta.password, sizeof(wifi_config.sta.password),
+           "%s", CONFIG_WHATSDOWN_WIFI_PASSWORD);
 
-  esp_wifi_set_mode(WIFI_MODE_STA);
-  esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-  esp_wifi_start();
-  esp_wifi_connect();
+  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+  ESP_ERROR_CHECK(esp_wifi_start());
+  ESP_ERROR_CHECK(esp_wifi_connect());
 
   esp_log_level_set("HTTP_CLIENT", ESP_LOG_NONE);
   esp_log_level_set("transport_base", ESP_LOG_NONE);
@@ -130,7 +131,7 @@ static void wifi_init() {
 }
 
 //------------------------ KID BOARD HELPER FUNCTIONS -------------------------
-#ifndef USE_CAMERA_NODE
+#if !CONFIG_WHATSDOWN_CAMERA_NODE
 static void init_time_sync() {
   setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
   tzset();
@@ -370,7 +371,7 @@ extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
   if (!digit_out || !confidence_out) return 0;
 
   if (!g_sketchpad_receiver_paused) {
-    ESP_LOGI("APP", "Predict: privremeno pauziram frame receiver");
+    ESP_LOGI("APP", "Predict: temporarily pausing frame receiver");
     g_camera_receiver.stop();
     g_sketchpad_receiver_paused = true;
     paused_for_predict = true;
@@ -404,7 +405,7 @@ extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
     config.user_data = &http_response;
     client = esp_http_client_init(&config);
     if (!client) {
-      ESP_LOGW("APP", "Predict init nije uspio (pokusaj %d/%d)", attempt,
+      ESP_LOGW("APP", "Predict init failed (attempt %d/%d)", attempt,
                kPredictAttempts);
     } else {
       esp_http_client_set_header(client, "Content-Type",
@@ -425,13 +426,13 @@ extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
           ESP_LOGI("APP", "Predict result: %d (%d%%)", digit, confidence);
           result = 1;
         } else if (err != ESP_OK) {
-          ESP_LOGW("APP", "Predict POST nije uspio (pokusaj %d/%d): %s", attempt,
+          ESP_LOGW("APP", "Predict POST failed (attempt %d/%d): %s", attempt,
                    kPredictAttempts, esp_err_to_name(err));
         } else if (http_response.len == 0) {
-          ESP_LOGW("APP", "Predict response prazan (pokusaj %d/%d)", attempt,
+          ESP_LOGW("APP", "Predict response empty (attempt %d/%d)", attempt,
                    kPredictAttempts);
         } else {
-          ESP_LOGW("APP", "Predict response neispravan (pokusaj %d/%d): %s",
+          ESP_LOGW("APP", "Predict response invalid (attempt %d/%d): %s",
                    attempt, kPredictAttempts, response);
         }
       }
@@ -452,7 +453,7 @@ extern "C" int ui_request_sketchpad_predict_from_bridge(int *digit_out,
 
 cleanup:
   if (paused_for_predict) {
-    ESP_LOGI("APP", "Predict: vracam frame receiver");
+    ESP_LOGI("APP", "Predict: resuming frame receiver");
     g_camera_receiver.start();
     g_sketchpad_receiver_paused = false;
   }
@@ -466,7 +467,7 @@ extern "C" void app_main(void) {
   // Shared WiFi Initialization
   wifi_init();
 
-#ifdef USE_CAMERA_NODE
+#if CONFIG_WHATSDOWN_CAMERA_NODE
   // ---------------------------------------------------------
   // CAMERA MODE LOGIC
   // ---------------------------------------------------------
@@ -512,9 +513,9 @@ extern "C" void app_main(void) {
   g_camera_receiver.start();  // Start pulling frames from Python server
 
   MQTTManager &mqtt = MQTTManager::get_instance();
-  mqtt.connect("mqtt://172.16.55.93:1883");
+  mqtt.connect(CONFIG_WHATSDOWN_MQTT_URI);
 
-  static MessengerApp app(mqtt, "kid");
+  static MessengerApp app(mqtt, CONFIG_WHATSDOWN_KID_ID);
   app.begin();
   g_messenger_app = &app;
 

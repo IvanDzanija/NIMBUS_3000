@@ -1,11 +1,11 @@
 {
-    "name": "whatsdownmobile",
-    "short_name": "whatsdownmobile",
+    "name": "WhatsDown",
+    "short_name": "WhatsDown",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Parent chat companion for the WhatsDown ESP32 kid board.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -73,7 +73,7 @@ class MQTTManager {
     auto event = (esp_mqtt_event_handle_t)event_data;
 
     if (event_id == MQTT_EVENT_CONNECTED) {
-      ESP_LOGI(TAG, "Connected — subscribing to %d topics",
+      ESP_LOGI(TAG, "Connected, subscribing to %d topics",
                manager->_pending_subscriptions.size());
 
       for (const auto &topic : manager->_pending_subscriptions) {

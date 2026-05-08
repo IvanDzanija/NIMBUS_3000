@@ -53,7 +53,7 @@ class CameraStreamer {
       .ledc_channel = LEDC_CHANNEL_0,
       .pixel_format = PIXFORMAT_JPEG,
       .frame_size = FRAMESIZE_QQVGA,
-      .jpeg_quality = 10,   // 0=best, 63=worst — was 63
+      .jpeg_quality = 10,   // 0=best, 63=worst; was 63
       .fb_count = 2,
       .fb_location = CAMERA_FB_IN_PSRAM,
       .grab_mode = CAMERA_GRAB_LATEST,  // always newest frame
@@ -74,7 +74,7 @@ class CameraStreamer {
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_header(client, "Content-Type", "image/jpeg");
 
-    // Pre-allocate a copy buffer once — keeps camera capture and HTTP upload decoupled.
+    // Pre-allocate once to keep camera capture and HTTP upload decoupled.
     const size_t BUF_SIZE = 32 * 1024;
     uint8_t *jpg_copy = static_cast<uint8_t *>(
         heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -95,7 +95,6 @@ class CameraStreamer {
         continue;
       }
 
-      // ── KEY CHANGE ──────────────────────────────────────────────
       // 1. Copy JPEG bytes into our own buffer
       size_t jpg_len = fb->len;
       if (jpg_len > BUF_SIZE) {
@@ -110,9 +109,8 @@ class CameraStreamer {
       // 2. Return the frame buffer immediately so the camera
       //    starts capturing the NEXT frame while we POST this one
       esp_camera_fb_return(fb);
-      // ────────────────────────────────────────────────────────────
 
-      // 3. POST the copied data — camera is already working in parallel
+      // 3. POST the copied data while the camera is already working in parallel
       esp_http_client_set_post_field(client, reinterpret_cast<const char *>(jpg_copy),
                                      jpg_len);
 
@@ -122,7 +120,7 @@ class CameraStreamer {
         vTaskDelay(pdMS_TO_TICKS(500));
       }
 
-      // No delay needed — GRAB_LATEST + fb_count=2 handles pacing
+      // No delay needed. GRAB_LATEST + fb_count=2 handles pacing.
     }
 
     heap_caps_free(jpg_copy);

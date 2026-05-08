@@ -1,4 +1,15 @@
-# Prerequisites
+# Local editor/history files
+.history/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+Server/data/
+
+# ESP-IDF / C build output
 *.d
 
 # Object files
@@ -65,6 +76,3 @@ cmake-build-debug/
 # PlatformIO
 .pio/
 platformio.ini
-
-# VS Code
-.vscode/

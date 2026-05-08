@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'mqtt_service.dart';
 import 'message_store.dart';
 
+const String brokerIp = String.fromEnvironment(
+  'BROKER_IP',
+  defaultValue: '192.168.1.10',
+);
+const String parentId = String.fromEnvironment('MY_ID', defaultValue: 'Mom');
+const String kidId = String.fromEnvironment('KID_ID', defaultValue: 'kid');
+
 void main() {
-  runApp(ChatApp(myId: "Mom"));
+  runApp(const ChatApp(myId: parentId));
 }
 
 class ChatApp extends StatelessWidget {
@@ -28,7 +35,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-enum ConnectionState { connecting, connected, error }
+enum MqttConnectionStatus { connecting, connected, error }
 
 class _ChatScreenState extends State<ChatScreen> {
   late final MessageStore _store;
@@ -36,7 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = [];
   final TextEditingController _controller = TextEditingController();
 
-  ConnectionState _connState = ConnectionState.connecting;
+  MqttConnectionStatus _connState = MqttConnectionStatus.connecting;
   String _errorMessage = "";
 
   @override
@@ -44,26 +51,29 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _store = MessageStore(myId: widget.myId);
     _mqtt = MqttService(
-      brokerIp: "172.16.55.93",
+      brokerIp: brokerIp,
       myId: widget.myId,
+      kidId: kidId,
     );
 
     _mqtt.onConnected = () async {
-      // Load history only once we're connected and ready
       final history = await _store.load();
       if (mounted) {
         setState(() {
-          _messages.addAll(history);
-          _connState = ConnectionState.connected;
+          _messages
+            ..clear()
+            ..addAll(history);
+          _connState = MqttConnectionStatus.connected;
         });
       }
     };
 
     _mqtt.onDisconnected = () {
       if (mounted) {
-        setState(() => _connState = ConnectionState.connecting);
-        // Auto-retry after 3 seconds
-        Future.delayed(const Duration(seconds: 3), _connect);
+        setState(() => _connState = MqttConnectionStatus.connecting);
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) _connect();
+        });
       }
     };
 
@@ -71,16 +81,16 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _errorMessage = e;
-          _connState = ConnectionState.error;
+          _connState = MqttConnectionStatus.error;
         });
       }
     };
 
     _mqtt.onMessageFromKid = (msg) {
-      _store.save("kid", msg);
+      _store.save(kidId, msg);
       if (mounted) {
         setState(() => _messages.add({
-          "sender": "kid",
+          "sender": kidId,
           "content": msg,
           "time": DateTime.now().toIso8601String(),
         }));
@@ -92,7 +102,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _connect() {
     setState(() {
-      _connState = ConnectionState.connecting;
+      _connState = MqttConnectionStatus.connecting;
       _errorMessage = "";
     });
     _mqtt.connect();
@@ -100,7 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty || _connState != ConnectionState.connected) return;
+    if (text.isEmpty || _connState != MqttConnectionStatus.connected) return;
     _mqtt.sendToKid(text);
     _store.save(widget.myId, text);
     setState(() => _messages.add({
@@ -119,7 +129,7 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: _connState == ConnectionState.connected
+            onPressed: _connState == MqttConnectionStatus.connected
                 ? () async {
                     await _store.clear();
                     setState(() => _messages.clear());
@@ -129,9 +139,9 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       body: switch (_connState) {
-        ConnectionState.connecting => _buildConnecting(),
-        ConnectionState.error     => _buildError(),
-        ConnectionState.connected => _buildChat(),
+        MqttConnectionStatus.connecting => _buildConnecting(),
+        MqttConnectionStatus.error => _buildError(),
+        MqttConnectionStatus.connected => _buildChat(),
       },
     );
   }
@@ -158,11 +168,16 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             const Icon(Icons.wifi_off, size: 48, color: Colors.red),
             const SizedBox(height: 16),
-            const Text("Could not connect",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "Could not connect",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Text(_errorMessage,
-                style: const TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+            Text(
+              _errorMessage,
+              style: const TextStyle(color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _connect,
@@ -181,7 +196,10 @@ class _ChatScreenState extends State<ChatScreen> {
         Expanded(
           child: _messages.isEmpty
               ? const Center(
-                  child: Text("No messages yet", style: TextStyle(color: Colors.grey)),
+                  child: Text(
+                    "No messages yet",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
